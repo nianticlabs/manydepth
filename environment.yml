@@ -1,0 +1,17 @@
+name: manydepth
+channels:
+  - default
+  - pytorch
+  - conda-forge
+dependencies:
+  - opencv=3.4.2
+  - matplotlib=3.1.2
+  - numpy=1.19.5
+  - pip
+  - pip:
+    - Pillow==6.2.1
+    - tensorboardX==1.5
+    - scikit-image==0.16.2
+    - torch==1.7.1
+    - torchvision==0.8.2
+    - tqdm==4.57.0

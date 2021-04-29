@@ -1,0 +1,5 @@
+The images test_sequence_source.jpg and test_sequence_target.jpg are cropped and resized frames from this YouTube video:
+https://www.youtube.com/watch?v=sF0wXxZwISw
+
+This video was licensed under the Creative Commons Attribution 3.0 licence
+https://creativecommons.org/licenses/by/3.0/
