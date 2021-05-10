@@ -6,7 +6,7 @@
 [Gabriel J. Brostow](http://www0.cs.ucl.ac.uk/staff/g.brostow/) and
 [Michael Firman](http://www.michaelfirman.co.uk) – **CVPR 2021**
 
-[[Link to paper]](https://arxiv.org/abs/TODO)
+[[Link to paper]](https://arxiv.org/abs/2104.14540)
 
 We introduce ***ManyDepth***, an adaptive approach to dense depth estimation that can make use of sequence information at test time, when it is available.
 
