@@ -154,11 +154,16 @@ class MonoDataset(data.Dataset):
                     try:
                         inputs[("color", i, -1)] = self.get_color(
                             folder, frame_index + i, side, do_flip)
-                    except FileNotFoundError:
-                        # fill with dummy values
-                        inputs[("color", i, -1)] = \
-                            Image.fromarray(np.zeros((100, 100, 3)).astype(np.uint8))
-                        poses[i] = None
+                    except FileNotFoundError as e:
+                        if i != 0:
+                            # fill with dummy values
+                            inputs[("color", i, -1)] = \
+                                Image.fromarray(np.zeros((100, 100, 3)).astype(np.uint8))
+                            poses[i] = None
+                        else:
+                            raise FileNotFoundError(f'Cannot find frame - make sure your '
+                                                    f'--data_path is set correctly, or try adding'
+                                                    f' the --png flag. {e}')
 
         # adjusting intrinsics to match each scale in the pyramid
         for scale in range(self.num_scales):
