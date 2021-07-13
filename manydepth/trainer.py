@@ -208,6 +208,17 @@ class Trainer:
         for self.epoch in range(self.opt.num_epochs):
             if self.epoch == self.opt.freeze_teacher_epoch:
                 self.train_teacher_and_pose = False
+                print('freezing teacher and pose networks!')
+
+                # here we reinitialise our optimizer to ensure there are no updates to the
+                # teacher and pose networks
+                self.parameters_to_train = []
+                self.parameters_to_train += list(self.models["encoder"].parameters())
+                self.parameters_to_train += list(self.models["depth"].parameters())
+                self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
+                self.model_lr_scheduler = optim.lr_scheduler.StepLR(
+                    self.model_optimizer, self.opt.scheduler_step_size, 0.1)
+
             self.run_epoch()
             if (self.epoch + 1) % self.opt.save_frequency == 0:
                 self.save_model()
@@ -218,6 +229,7 @@ class Trainer:
 
         print("Training")
         self.set_train()
+
         for batch_idx, inputs in enumerate(self.train_loader):
 
             before_op_time = time.time()
@@ -339,8 +351,9 @@ class Trainer:
         losses = self.compute_losses(inputs, outputs, is_multi=True)
 
         # update losses with single frame losses
-        for key, val in mono_losses.items():
-            losses[key] += val
+        if self.train_teacher_and_pose:
+            for key, val in mono_losses.items():
+                losses[key] += val
 
         # update adaptive depth bins
         if self.train_teacher_and_pose:

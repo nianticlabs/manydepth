@@ -231,6 +231,9 @@ class MonodepthOptions:
                                  action='store_true',
                                  help='If set, during evaluation the current frame will also be'
                                       'used as the lookup frame, to simulate a static camera')
+        self.parser.add_argument('--eval_teacher',
+                                 action='store_true',
+                                 help='If set, the teacher network will be evaluated')
 
     def parse(self):
         self.options = self.parser.parse_args()

@@ -90,11 +90,24 @@ def evaluate(opt):
 
         # Setup dataloaders
         filenames = readlines(os.path.join(splits_dir, opt.eval_split, "test_files.txt"))
-        encoder_path = os.path.join(opt.load_weights_folder, "encoder.pth")
-        decoder_path = os.path.join(opt.load_weights_folder, "depth.pth")
+
+        if opt.eval_teacher:
+            encoder_path = os.path.join(opt.load_weights_folder, "mono_encoder.pth")
+            decoder_path = os.path.join(opt.load_weights_folder, "mono_depth.pth")
+            encoder_class = networks.ResnetEncoder
+
+        else:
+            encoder_path = os.path.join(opt.load_weights_folder, "encoder.pth")
+            decoder_path = os.path.join(opt.load_weights_folder, "depth.pth")
+            encoder_class = networks.ResnetEncoderMatching
 
         encoder_dict = torch.load(encoder_path)
-        HEIGHT, WIDTH = encoder_dict['height'], encoder_dict['width']
+        try:
+            HEIGHT, WIDTH = encoder_dict['height'], encoder_dict['width']
+        except KeyError:
+            print('No "height" or "width" keys found in the encoder state_dict, resorting to '
+                  'using command line values!')
+            HEIGHT, WIDTH = opt.height, opt.width
 
         if opt.eval_split == 'cityscapes':
             dataset = datasets.CityscapesEvalDataset(opt.data_path, filenames,
@@ -111,27 +124,40 @@ def evaluate(opt):
                                 pin_memory=True, drop_last=False)
 
         # setup models
-        encoder = networks.ResnetEncoderMatching(opt.num_layers, False,
-                                                 input_width=encoder_dict['width'],
-                                                 input_height=encoder_dict['height'],
-                                                 adaptive_bins=True,
-                                                 min_depth_bin=0.1, max_depth_bin=20.0,
-                                                 depth_binning=opt.depth_binning,
-                                                 num_depth_bins=opt.num_depth_bins)
+        if opt.eval_teacher:
+            encoder_opts = dict(num_layers=opt.num_layers,
+                                pretrained=False)
+        else:
+            encoder_opts = dict(num_layers=opt.num_layers,
+                                pretrained=False,
+                                input_width=encoder_dict['width'],
+                                input_height=encoder_dict['height'],
+                                adaptive_bins=True,
+                                min_depth_bin=0.1, max_depth_bin=20.0,
+                                depth_binning=opt.depth_binning,
+                                num_depth_bins=opt.num_depth_bins)
+            pose_enc_dict = torch.load(os.path.join(opt.load_weights_folder, "pose_encoder.pth"))
+            pose_dec_dict = torch.load(os.path.join(opt.load_weights_folder, "pose.pth"))
+
+            pose_enc = networks.ResnetEncoder(18, False, num_input_images=2)
+            pose_dec = networks.PoseDecoder(pose_enc.num_ch_enc, num_input_features=1,
+                                            num_frames_to_predict_for=2)
+
+            pose_enc.load_state_dict(pose_enc_dict, strict=True)
+            pose_dec.load_state_dict(pose_dec_dict, strict=True)
+
+            min_depth_bin = encoder_dict.get('min_depth_bin')
+            max_depth_bin = encoder_dict.get('max_depth_bin')
+
+            pose_enc.eval()
+            pose_dec.eval()
+
+            if torch.cuda.is_available():
+                pose_enc.cuda()
+                pose_dec.cuda()
+
+        encoder = encoder_class(**encoder_opts)
         depth_decoder = networks.DepthDecoder(encoder.num_ch_enc)
-
-        pose_enc_dict = torch.load(os.path.join(opt.load_weights_folder, "pose_encoder.pth"))
-        pose_dec_dict = torch.load(os.path.join(opt.load_weights_folder, "pose.pth"))
-
-        pose_enc = networks.ResnetEncoder(18, False, num_input_images=2)
-        pose_dec = networks.PoseDecoder(pose_enc.num_ch_enc, num_input_features=1,
-                                        num_frames_to_predict_for=2)
-
-        pose_enc.load_state_dict(pose_enc_dict, strict=True)
-        pose_dec.load_state_dict(pose_dec_dict, strict=True)
-
-        min_depth_bin = encoder_dict.get('min_depth_bin')
-        max_depth_bin = encoder_dict.get('max_depth_bin')
 
         model_dict = encoder.state_dict()
         encoder.load_state_dict({k: v for k, v in encoder_dict.items() if k in model_dict})
@@ -139,19 +165,14 @@ def evaluate(opt):
 
         encoder.eval()
         depth_decoder.eval()
-        pose_enc.eval()
-        pose_dec.eval()
 
         if torch.cuda.is_available():
             encoder.cuda()
             depth_decoder.cuda()
-            pose_enc.cuda()
-            pose_dec.cuda()
 
         pred_disps = []
 
         print("-> Computing predictions with size {}x{}".format(HEIGHT, WIDTH))
-        print('min depth bin {} - max depth bin {}'.format(min_depth_bin, max_depth_bin))
 
         # do inference
         with torch.no_grad():
@@ -160,67 +181,72 @@ def evaluate(opt):
                 if torch.cuda.is_available():
                     input_color = input_color.cuda()
 
-                if opt.static_camera:
-                    for f_i in frames_to_load:
-                        data["color", f_i, 0] = data[('color', 0, 0)]
+                if opt.eval_teacher:
+                    output = encoder(input_color)
+                    output = depth_decoder(output)
+                else:
 
-                # predict poses
-                pose_feats = {f_i: data["color", f_i, 0] for f_i in frames_to_load}
-                if torch.cuda.is_available():
-                    pose_feats = {k: v.cuda() for k, v in pose_feats.items()}
-                # compute pose from 0->-1, -1->-2, -2->-3 etc and multiply to find 0->-3
-                for fi in frames_to_load[1:]:
-                    if fi < 0:
-                        pose_inputs = [pose_feats[fi], pose_feats[fi + 1]]
-                        pose_inputs = [pose_enc(torch.cat(pose_inputs, 1))]
-                        axisangle, translation = pose_dec(pose_inputs)
-                        pose = transformation_from_parameters(
-                            axisangle[:, 0], translation[:, 0], invert=True)
+                    if opt.static_camera:
+                        for f_i in frames_to_load:
+                            data["color", f_i, 0] = data[('color', 0, 0)]
 
-                        # now find 0->fi pose
-                        if fi != -1:
-                            pose = torch.matmul(pose, data[('relative_pose', fi + 1)])
+                    # predict poses
+                    pose_feats = {f_i: data["color", f_i, 0] for f_i in frames_to_load}
+                    if torch.cuda.is_available():
+                        pose_feats = {k: v.cuda() for k, v in pose_feats.items()}
+                    # compute pose from 0->-1, -1->-2, -2->-3 etc and multiply to find 0->-3
+                    for fi in frames_to_load[1:]:
+                        if fi < 0:
+                            pose_inputs = [pose_feats[fi], pose_feats[fi + 1]]
+                            pose_inputs = [pose_enc(torch.cat(pose_inputs, 1))]
+                            axisangle, translation = pose_dec(pose_inputs)
+                            pose = transformation_from_parameters(
+                                axisangle[:, 0], translation[:, 0], invert=True)
 
-                    else:
-                        pose_inputs = [pose_feats[fi - 1], pose_feats[fi]]
-                        pose_inputs = [pose_enc(torch.cat(pose_inputs, 1))]
-                        axisangle, translation = pose_dec(pose_inputs)
-                        pose = transformation_from_parameters(
-                            axisangle[:, 0], translation[:, 0], invert=False)
+                            # now find 0->fi pose
+                            if fi != -1:
+                                pose = torch.matmul(pose, data[('relative_pose', fi + 1)])
 
-                        # now find 0->fi pose
-                        if fi != 1:
-                            pose = torch.matmul(pose, data[('relative_pose', fi - 1)])
+                        else:
+                            pose_inputs = [pose_feats[fi - 1], pose_feats[fi]]
+                            pose_inputs = [pose_enc(torch.cat(pose_inputs, 1))]
+                            axisangle, translation = pose_dec(pose_inputs)
+                            pose = transformation_from_parameters(
+                                axisangle[:, 0], translation[:, 0], invert=False)
 
-                    data[('relative_pose', fi)] = pose
+                            # now find 0->fi pose
+                            if fi != 1:
+                                pose = torch.matmul(pose, data[('relative_pose', fi - 1)])
 
-                lookup_frames = [data[('color', idx, 0)] for idx in frames_to_load[1:]]
-                lookup_frames = torch.stack(lookup_frames, 1)  # batch x frames x 3 x h x w
+                        data[('relative_pose', fi)] = pose
 
-                relative_poses = [data[('relative_pose', idx)] for idx in frames_to_load[1:]]
-                relative_poses = torch.stack(relative_poses, 1)
+                    lookup_frames = [data[('color', idx, 0)] for idx in frames_to_load[1:]]
+                    lookup_frames = torch.stack(lookup_frames, 1)  # batch x frames x 3 x h x w
 
-                K = data[('K', 2)]  # quarter resolution for matching
-                invK = data[('inv_K', 2)]
+                    relative_poses = [data[('relative_pose', idx)] for idx in frames_to_load[1:]]
+                    relative_poses = torch.stack(relative_poses, 1)
 
-                if torch.cuda.is_available():
-                    lookup_frames = lookup_frames.cuda()
-                    relative_poses = relative_poses.cuda()
-                    K = K.cuda()
-                    invK = invK.cuda()
+                    K = data[('K', 2)]  # quarter resolution for matching
+                    invK = data[('inv_K', 2)]
 
-                if opt.zero_cost_volume:
-                    relative_poses *= 0
+                    if torch.cuda.is_available():
+                        lookup_frames = lookup_frames.cuda()
+                        relative_poses = relative_poses.cuda()
+                        K = K.cuda()
+                        invK = invK.cuda()
 
-                if opt.post_process:
-                    raise NotImplementedError
+                    if opt.zero_cost_volume:
+                        relative_poses *= 0
 
-                output, lowest_cost, costvol = encoder(input_color, lookup_frames,
-                                                       relative_poses,
-                                                       K,
-                                                       invK,
-                                                       min_depth_bin, max_depth_bin)
-                output = depth_decoder(output)
+                    if opt.post_process:
+                        raise NotImplementedError
+
+                    output, lowest_cost, costvol = encoder(input_color, lookup_frames,
+                                                           relative_poses,
+                                                           K,
+                                                           invK,
+                                                           min_depth_bin, max_depth_bin)
+                    output = depth_decoder(output)
 
                 pred_disp, _ = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
                 pred_disp = pred_disp.cpu()[:, 0].numpy()
@@ -244,6 +270,8 @@ def evaluate(opt):
     if opt.save_pred_disps:
         if opt.zero_cost_volume:
             tag = "zero_cv"
+        elif opt.eval_teacher:
+            tag = "teacher"
         else:
             tag = "multi"
         output_path = os.path.join(
