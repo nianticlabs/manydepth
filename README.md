@@ -15,6 +15,15 @@ We introduce ***ManyDepth***, an adaptive approach to dense depth estimation tha
 * ✅ **Efficient**: Only one forward pass at test time. No test-time optimization needed.
 * ✅ **State-of-the-art** self-supervised monocular-trained depth estimation on KITTI and CityScapes.
 
+
+<p align="center">
+  <a
+href="https://storage.googleapis.com/niantic-lon-static/research/manydepth/manydepth_cvpr_cc.mp4">
+  <img src="assets/video_thumbnail.png" alt="5 minute CVPR presentation video link" width="400">
+  </a>
+</p>
+
+
 ## Overview
 
 Cost volumes are commonly used for estimating depths from multiple input views:
