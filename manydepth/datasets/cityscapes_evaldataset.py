@@ -60,11 +60,7 @@ class CityscapesEvalDataset(MonoDataset):
         if side is not None:
             raise ValueError("Cityscapes dataset doesn't know how to deal with sides yet")
 
-        try:
-            color = self.loader(self.get_image_path(city, frame_name, side, is_sequence))
-        except FileNotFoundError:
-            # fill with dummy
-            color = pil.fromarray(np.zeros((100, 100, 3)).astype(np.uint8))
+        color = self.loader(self.get_image_path(city, frame_name, side, is_sequence))
 
         # crop down to cityscapes size
         w, h = color.size
