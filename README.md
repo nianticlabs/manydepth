@@ -36,7 +36,7 @@ Run the webcam demo with :
 python -m manydepth
 ```
 
-To use the class to create a monodepth2 object as follows : 
+To use the class to create a manydepth2 object as follows : 
 ```python
 from manydepth  import manydepth
 md = manydepth()
