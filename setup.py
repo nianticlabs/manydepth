@@ -12,7 +12,7 @@ setuptools.setup(
     scripts=[],
     license='LICENSE',
     url='https://github.com/AdityaNG/monodepth2',
-    description="[ICCV 2019] Monocular depth estimation from a single image",
+    description="[CVPR 2021] Self-supervised depth estimation from short sequences",
     long_description=long_description,
     long_description_content_type='text/markdown',
     python_requires='>=3.6',
