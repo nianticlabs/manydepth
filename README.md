@@ -26,7 +26,7 @@ href="https://storage.googleapis.com/niantic-lon-static/research/manydepth/manyd
 
 ## pip install
 
-Monodepth2 can be installed through pip 
+Manydepth can be installed through pip 
 ```bash
 pip install git+https://github.com/AdityaNG/manydepth@pip-module
 ```
