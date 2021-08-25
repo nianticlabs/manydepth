@@ -24,6 +24,27 @@ href="https://storage.googleapis.com/niantic-lon-static/research/manydepth/manyd
 </p>
 
 
+## pip install
+
+Monodepth2 can be installed through pip 
+```bash
+pip install git+https://github.com/AdityaNG/manydepth@pip-module
+```
+
+Run the webcam demo with :
+```bash
+python -m manydepth
+```
+
+To use the class to create a monodepth2 object as follows : 
+```python
+from manydepth  import manydepth
+md = manydepth()
+# Load in a frame along with previous frame
+depth = md.eval(frame, prev_frame)
+```
+
+
 ## Overview
 
 Cost volumes are commonly used for estimating depths from multiple input views:
