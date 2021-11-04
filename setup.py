@@ -7,7 +7,7 @@ with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setuptools.setup(
     name="manydepth",
-    version="0.1.0",
+    version="1.0.0",
     packages=['manydepth', 'manydepth.networks'],
     scripts=[],
     license='LICENSE',

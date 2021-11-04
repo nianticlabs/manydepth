@@ -28,7 +28,7 @@ href="https://storage.googleapis.com/niantic-lon-static/research/manydepth/manyd
 
 Manydepth can be installed through pip 
 ```bash
-pip install git+https://github.com/AdityaNG/manydepth@pip-module
+pip install manydepth
 ```
 
 Run the webcam demo with :
@@ -44,6 +44,11 @@ md = manydepth()
 depth = md.eval(frame, prev_frame)
 ```
 
+## Install Latest Version (Might be unstable)
+
+```bash
+pip install git+https://github.com/AdityaNG/manydepth@pip-module
+```
 
 ## Overview
 
