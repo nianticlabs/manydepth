@@ -32,9 +32,16 @@ import matplotlib.pyplot as plt
 _DEPTH_COLORMAP = plt.get_cmap('plasma', 256)  # for plotting
 
 
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
 class Trainer:
     def __init__(self, options):
         self.opt = options
+
         self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name)
 
         # checking height and width are multiples of 32
@@ -148,7 +155,8 @@ class Trainer:
             frames_to_load, 4, is_train=True, img_ext=img_ext)
         self.train_loader = DataLoader(
             train_dataset, self.opt.batch_size, True,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True,
+            worker_init_fn=seed_worker)
         val_dataset = self.dataset(
             self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
             frames_to_load, 4, is_train=False, img_ext=img_ext)
@@ -190,8 +198,15 @@ class Trainer:
     def set_train(self):
         """Convert all models to training mode
         """
-        for m in self.models.values():
-            m.train()
+
+        for k, m in self.models.items():
+            if self.train_teacher_and_pose:
+                m.train()
+            else:
+                # if teacher + pose is frozen, then only use training batch norm stats for
+                # multi components
+                if k in ['depth', 'encoder']:
+                    m.train()
 
     def set_eval(self):
         """Convert all models to testing/evaluation mode
@@ -207,21 +222,30 @@ class Trainer:
         self.start_time = time.time()
         for self.epoch in range(self.opt.num_epochs):
             if self.epoch == self.opt.freeze_teacher_epoch:
-                self.train_teacher_and_pose = False
-                print('freezing teacher and pose networks!')
-
-                # here we reinitialise our optimizer to ensure there are no updates to the
-                # teacher and pose networks
-                self.parameters_to_train = []
-                self.parameters_to_train += list(self.models["encoder"].parameters())
-                self.parameters_to_train += list(self.models["depth"].parameters())
-                self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
-                self.model_lr_scheduler = optim.lr_scheduler.StepLR(
-                    self.model_optimizer, self.opt.scheduler_step_size, 0.1)
+                self.freeze_teacher()
 
             self.run_epoch()
             if (self.epoch + 1) % self.opt.save_frequency == 0:
                 self.save_model()
+
+    def freeze_teacher(self):
+        if self.train_teacher_and_pose:
+            self.train_teacher_and_pose = False
+            print('freezing teacher and pose networks!')
+
+            # here we reinitialise our optimizer to ensure there are no updates to the
+            # teacher and pose networks
+            self.parameters_to_train = []
+            self.parameters_to_train += list(self.models["encoder"].parameters())
+            self.parameters_to_train += list(self.models["depth"].parameters())
+            self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
+            self.model_lr_scheduler = optim.lr_scheduler.StepLR(
+                self.model_optimizer, self.opt.scheduler_step_size, 0.1)
+
+            # set eval so that teacher + pose batch norm is running average
+            self.set_eval()
+            # set train so that multi batch norm is in train mode
+            self.set_train()
 
     def run_epoch(self):
         """Run a single epoch of training and validation
@@ -253,7 +277,12 @@ class Trainer:
 
                 self.log("train", inputs, outputs, losses)
                 self.val()
-                self.save_model()
+
+            if self.opt.save_intermediate_models and late_phase:
+                self.save_model(save_step=True)
+
+            if self.step == self.opt.freeze_teacher_step:
+                self.freeze_teacher()
 
             self.step += 1
         self.model_lr_scheduler.step()
@@ -765,10 +794,15 @@ class Trainer:
         with open(os.path.join(models_dir, 'opt.json'), 'w') as f:
             json.dump(to_save, f, indent=2)
 
-    def save_model(self):
+    def save_model(self, save_step=False):
         """Save model weights to disk
         """
-        save_folder = os.path.join(self.log_path, "models", "weights_{}".format(self.epoch))
+        if save_step:
+            save_folder = os.path.join(self.log_path, "models", "weights_{}_{}".format(self.epoch,
+                                                                                       self.step))
+        else:
+            save_folder = os.path.join(self.log_path, "models", "weights_{}".format(self.epoch))
+
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
 
