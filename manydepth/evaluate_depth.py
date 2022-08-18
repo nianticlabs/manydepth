@@ -176,7 +176,7 @@ def evaluate(opt):
 
         # do inference
         with torch.no_grad():
-            for i, data in tqdm.tqdm(enumerate(dataloader)):
+            for i, data in enumerate(tqdm.tqdm(dataloader)):
                 input_color = data[('color', 0, 0)]
                 if torch.cuda.is_available():
                     input_color = input_color.cuda()
