@@ -19,14 +19,9 @@ from manydepth import networks
 from .layers import transformation_from_parameters
 
 
-def parse_args():
+def _parse_args():
     parser = argparse.ArgumentParser(
         description='Simple testing funtion for ManyDepth models.')
-
-    parser.add_argument('--target_image_path', type=str,
-                        help='path to a test image to predict for', required=True)
-    parser.add_argument('--source_image_path', type=str,
-                        help='path to a previous image in the video sequence', required=True)
     parser.add_argument('--intrinsics_json_path', type=str,
                         help='path to a json file containing a normalised 3x3 intrinsics matrix',
                         required=True)
@@ -36,6 +31,15 @@ def parse_args():
                         help='"multi" or "mono". If set to "mono" then the network is run without '
                              'the source image, e.g. as described in Table 5 of the paper.',
                         required=False)
+    return parser
+
+
+def parse_args():
+    parser = _parse_args()
+    parser.add_argument('--target_image_path', type=str,
+                        help='path to a test image to predict for', required=True)
+    parser.add_argument('--source_image_path', type=str,
+                        help='path to a previous image in the video sequence', required=True)
     return parser.parse_args()
 
 
@@ -164,7 +168,9 @@ def test_simple(args):
         # Saving numpy file
         directory, filename = os.path.split(args.target_image_path)
         output_name = os.path.splitext(filename)[0]
-        name_dest_npy = os.path.join(directory, "{}_disp_{}.npy".format(output_name, args.mode))
+        directory_np = directory + "_np"
+        os.makedirs(directory_np, exist_ok=True)
+        name_dest_npy = os.path.join(directory_np, "{}_disp_{}.npy".format(output_name, args.mode))
         np.save(name_dest_npy, sigmoid_output.cpu().numpy())
 
         # Saving colormapped depth image and cost volume argmin
@@ -175,8 +181,10 @@ def test_simple(args):
             colormapped_im = (mapper.to_rgba(toplot)[:, :, :3] * 255).astype(np.uint8)
             im = pil.fromarray(colormapped_im)
 
-            name_dest_im = os.path.join(directory,
-                                        "{}_{}_{}.jpeg".format(output_name, plot_name, args.mode))
+            directory_depth = directory + "_{}".format(plot_name)
+            os.makedirs(directory_depth, exist_ok=True)
+            name_dest_im = os.path.join(directory_depth,
+                                        "{}_{}.jpeg".format(output_name, args.mode))
             im.save(name_dest_im)
 
             print("-> Saved output image to {}".format(name_dest_im))
