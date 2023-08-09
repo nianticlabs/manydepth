@@ -147,5 +147,5 @@ class manydepth:
 
                 #print("-> Saved output image to {}".format(name_dest_im))
 
-        return colormapped_im
+        return toplot
         
