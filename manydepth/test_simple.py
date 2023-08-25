@@ -15,7 +15,8 @@ import matplotlib.cm as cm
 import torch
 from torchvision import transforms
 
-from manydepth import networks
+#from .networks import ResnetEncoderMatching
+from . import networks
 from .layers import transformation_from_parameters
 
 
@@ -37,6 +38,15 @@ def parse_args():
                              'the source image, e.g. as described in Table 5 of the paper.',
                         required=False)
     return parser.parse_args()
+
+def preprocess_image(image_in, resize_width, resize_height):
+    image = pil.fromarray(image_in).convert('RGB')
+    original_width, original_height = image.size
+    image = image.resize((resize_width, resize_height), pil.LANCZOS)
+    image = transforms.ToTensor()(image).unsqueeze(0)
+    if torch.cuda.is_available():
+        return image.cuda(), (original_height, original_width)
+    return image, (original_height, original_width)
 
 
 def load_and_preprocess_image(image_path, resize_width, resize_height):
